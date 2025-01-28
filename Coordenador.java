@@ -4,10 +4,9 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class Coordenador {
-    private final Queue<Integer> filaPedidos = new LinkedList<>(); //Armazena os IDs dos processos que pediram acesso à região crítica
-    private final Map<Integer, Socket> sockets = new HashMap<>(); //Armazena os sockets de comunicação com cada processo, usando o ID do processo como chave.
-    private final Map<Integer, Integer> contagemAtendimentos = new HashMap<>(); //Registra quantas vezes cada processo foi atendido
-    private final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS"); //Um objeto SimpleDateFormat para formatar timestamps em logs.
+    private final Queue<Integer> filaPedidos = new LinkedList<>(); //Armazena os IDs das threads que pediram acesso à região crítica
+    private final Map<Integer, Socket> sockets = new HashMap<>(); //Armazena os sockets de comunicação com cada thread, usando o ID da thread como chave
+    private final Map<Integer, Integer> contagemAtendimentos = new HashMap<>(); //Registra quantas vezes cada thread foi atendida
     private final int porta;
 
     public Coordenador(int porta) {
@@ -15,34 +14,33 @@ public class Coordenador {
     }
 
     public void iniciar() {
-        try (ServerSocket serverSocket = new ServerSocket(porta); Scanner scanner = new Scanner(System.in)) { //o coordenador cria um ServerSocket que ficará ouvindo conexões de entrada na porta especificada (porta). O ServerSocket aceita conexões de clientes (os processos).
+        try (ServerSocket serverSocket = new ServerSocket(porta); 
+            Scanner scanner = new Scanner(System.in)) { //O coordenador cria um ServerSocket que ficará ouvindo conexões de entrada na porta especificada
             System.out.println("Coordenador iniciado na porta " + porta);
-    
-            // Thread única que ficará executando em loop para aceitar conexões de novos processos. O uso de uma thread separada garante que o coordenador não fique bloqueado esperando por uma conexão, podendo continuar executando outras tarefas (como aguardar comandos no terminal).
+            
+            // Thread única que ficará executando em loop para aceitar conexões de novas threads
             new Thread(() -> {
                 while (true) {
                     try {
-                        Socket socket = serverSocket.accept(); //serverSocket.accept() espera até que um processo tente se conectar ao coordenador. Quando a conexão é aceita, o Socket é obtido, permitindo a comunicação com o processo.
-                        DataInputStream input = new DataInputStream(socket.getInputStream()); //DataInputStream é usado para ler dados do socket. Aqui, ele lê um int que representa o ID do processo que se conectou.
-                        int processoId = input.readInt();
+                        Socket socket = serverSocket.accept(); //Espera até que uma thread tente se conectar ao coordenador. Quando a conexão é aceita, o Socket é obtido, permitindo a comunicação com a thread.
+                        DataInputStream input = new DataInputStream(socket.getInputStream()); //DataInputStream é usado para ler dados do socket. Aqui, ele lê um int que representa o ID da thread que se conectou.
+                        int threadId = input.readInt();
     
                         synchronized (sockets) { 
-                            sockets.put(processoId, socket);
-                            contagemAtendimentos.put(processoId, 0); //Coloca 0 como valor nessa linha para indicar que o processo ainda não foi atendido, apenas conectou
+                            sockets.put(threadId, socket);
+                            contagemAtendimentos.put(threadId, 0); //Coloca 0 como valor nessa linha para indicar que a thread ainda não foi atendido, apenas conectou
                         }
-                        System.out.println("Processo conectado: " + processoId);
+                        System.out.println("Thread conectada: " + threadId);
     
-                        // Inicia thread para tratar mensagens do processo
-                        tratarMensagens(processoId, socket);
-
-                        
+                        // Inicia thread para tratar mensagens da thread
+                        tratarMensagens(threadId, socket);
                     } catch (IOException e) {
                         System.err.println("Erro ao aceitar conexão: " + e.getMessage());
                     }
                 }
             }).start();
     
-            // Interface para comandos no terminal: mantém o programa aguardando comandos do usuário até que o comando "sair" seja dado.
+            // Interface para comandos no terminal: mantém o programa aguardando comandos do usuário até que o comando "sair" seja dado
             while (true) {
                 System.out.println("Comandos disponíveis: [fila] [contagem] [sair]");
                 String comando = scanner.nextLine();
@@ -66,54 +64,54 @@ public class Coordenador {
         }
     }
 
-    private void tratarMensagens(int processoId, Socket socket) { //Cada conexão de processo tem sua própria thread para tratar as mensagens, garantindo que a comunicação entre o coordenador e os processos não bloqueie a execução do servidor.
+    private void tratarMensagens(int threadId, Socket socket) { // Cada conexão coordenador <> thread, criará uma nova thread própria para tratar as mensagens dessa conexão, garantindo que a comunicação entre o coordenador e as threads não bloqueie a execução do servidor
         new Thread(() -> { 
-            try (DataInputStream input = new DataInputStream(socket.getInputStream()); //utilizado para ler as mensagens que o processo envia ao coordenador.
-                 DataOutputStream output = new DataOutputStream(socket.getOutputStream())) { //Usado para enviar respostas ao processo
+            try (DataInputStream input = new DataInputStream(socket.getInputStream()); 
+                DataOutputStream output = new DataOutputStream(socket.getOutputStream())) { 
 
-                while (true) { //O processo pode enviar múltiplas mensagens para o coordenador na mesma conexão, e é por isso que esse loop é necessário, pois vai ser uma execução para cada mensagem
-                    String mensagem = input.readUTF(); //Coordenador fica aguardando até que o processo envie uma mensagem via socket. 
-                    if (mensagem.startsWith("REQUEST")) { //Processo solicita acesso a região crítica
-                        log("REQUEST recebido de " + processoId); //Imprime o log da ação de REQUEST na tela
+                while (true) { // A thread pode enviar múltiplas mensagens para o coordenador na mesma conexão, e é por isso que esse loop é necessário, pois vai ser uma execução para cada mensagem
+                    String mensagem = input.readUTF(); // Coordenador fica aguardando até que a thread envie uma mensagem via socket
+                    if (mensagem.startsWith("1")) { // Thread solicita acesso a região crítica
+                        log(mensagem);
                         synchronized (filaPedidos) { 
-                            filaPedidos.add(processoId); //Processo é adicionado na fila de acesso a região crítica
-                        }
+                            filaPedidos.add(threadId); // Thread é adicionada na fila de acesso a região crítica
+                        } 
                         
-                        // O processo aguarda até ser o primeiro na fila
+                        // A thread aguarda até ser a primeiro na fila
                         synchronized (filaPedidos) {
                             try {
-                                while (filaPedidos.peek() != processoId) {
+                                while (filaPedidos.peek() != threadId) {
                                     filaPedidos.wait();  // Espera enquanto não for o primeiro da fila
                                 }
-                                // Depois de sair do loop, é a vez do processo
-                                output.writeUTF("GRANT"); //Enviando a mensagem de GRANT pro processo
-                                log("GRANT enviado para " + processoId); //Imprime o log da ação de GRANT na tela
+
+                                // Depois de sair do loop, é a vez da thread
+
+                                String mensagem_grant = new Mensagem(2, Integer.parseInt(Thread.currentThread().getName().split("-")[1])).mensagemCodificada;
+                                output.writeUTF(mensagem_grant);
+                                log(mensagem_grant); 
                                 synchronized (contagemAtendimentos) {
-                                    contagemAtendimentos.put(processoId, contagemAtendimentos.get(processoId) + 1);
+                                    contagemAtendimentos.put(threadId, contagemAtendimentos.get(threadId) + 1);
                                 }
                             } catch (InterruptedException e) {
                                 System.err.println("Erro ao aguardar acesso à região crítica: " + e.getMessage());
                             }
                         }
-                    } else if (mensagem.startsWith("RELEASE")) {
-                        log("RELEASE recebido de " + processoId);
+                    } else if (mensagem.startsWith("3")) {
+                        log(mensagem);
                         synchronized (filaPedidos) {
-                            filaPedidos.poll(); // Remove o processo da fila
-                            filaPedidos.notify();  // Notifica todos os processos aguardando a fila
+                            filaPedidos.poll(); // Remove a thread da fila
+                            filaPedidos.notify();  // Notifica todos as threads aguardando a fila
                         }   
                     }
-                    
-
                 }
             } catch (IOException e) {
                 if (socket.isClosed()) {
-                    System.out.println("Conexão com processo " + processoId + " fechada.");
+                    System.out.println("Conexão com thread " + threadId + " fechada.");
                 } else {
-                    System.err.println("Erro no processo " + processoId + ": " + e.getMessage());
+                    System.err.println("Erro na thread " + threadId + ": " + e.getMessage());
                 }
                 
             }
-
         }).start();
     }
 
@@ -125,8 +123,8 @@ public class Coordenador {
 
     private void imprimirContagem() {
         synchronized (contagemAtendimentos) {
-            contagemAtendimentos.forEach((processoId, count) -> {
-                System.out.println("Processo " + processoId + " foi atendido " + count + " vezes.");
+            contagemAtendimentos.forEach((threadId, count) -> {
+                System.out.println("Thread " + threadId + " foi atendido " + count + " vezes.");
             });
         }
     }
@@ -145,14 +143,23 @@ public class Coordenador {
         System.exit(0);
     }
 
-    private void log(String mensagem) {
+    private void log(String mensagem) { 
+        String tipo_mensagem = mensagem.split("\\|")[0];
+        String thread = mensagem.split("\\|")[1]; 
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         String timestamp = sdf.format(new Date());
-        System.out.println("[" + timestamp + "] " + mensagem);
-    }
 
+        if (tipo_mensagem.equals("1")) {
+            System.out.println("[" + timestamp + "] REQUEST recebido da thread " + thread);
+        } else if (tipo_mensagem.equals("2")) {
+            System.out.println("[" + timestamp + "] GRANT enviado para thread " + thread);
+        } else if (tipo_mensagem.equals("3")) {
+            System.out.println("[" + timestamp + "] RELEASE recebido da thread " + thread);
+        }
+    }
+    
     public static void main(String[] args) {
-        int porta = 12345;
-        Coordenador coordenador = new Coordenador(porta);
-        coordenador.iniciar();
+        new Coordenador(12345).iniciar();
     }
 }
+
