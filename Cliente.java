@@ -38,7 +38,7 @@ public class Cliente extends Thread {
 
                     // Região crítica
                     escreverArquivo();
-                    Thread.sleep(2 * 1000); //Ficará 2 segundos na região crítica
+                    Thread.sleep(5 * 1000); //Ficará 5 segundos na região crítica
 
                     // Envia RELEASE
                     output.writeUTF(new Mensagem(3, id).mensagemCodificada);
@@ -59,5 +59,3 @@ public class Cliente extends Thread {
         }
     }
 }
-
-

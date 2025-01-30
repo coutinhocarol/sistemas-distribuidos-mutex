@@ -11,6 +11,12 @@ public class Coordenador {
 
     public Coordenador(int porta) {
         this.porta = porta;
+
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("coordenador_log.txt", false))) {
+            writer.write(""); 
+        } catch (IOException e) {
+            System.err.println("Erro ao limpar o log: " + e.getMessage());
+        }
     }
 
     public void iniciar() {
@@ -85,8 +91,7 @@ public class Coordenador {
                                 }
 
                                 // Depois de sair do loop, é a vez da thread
-
-                                String mensagem_grant = new Mensagem(2, Integer.parseInt(Thread.currentThread().getName().split("-")[1])).mensagemCodificada;
+                                String mensagem_grant = new Mensagem(2, threadId).mensagemCodificada;
                                 output.writeUTF(mensagem_grant);
                                 log(mensagem_grant); 
                                 synchronized (contagemAtendimentos) {
@@ -124,7 +129,7 @@ public class Coordenador {
     private void imprimirContagem() {
         synchronized (contagemAtendimentos) {
             contagemAtendimentos.forEach((threadId, count) -> {
-                System.out.println("Thread " + threadId + " foi atendido " + count + " vezes.");
+                System.out.println("Thread " + threadId + " foi atendida " + count + " vezes.");
             });
         }
     }
@@ -149,12 +154,16 @@ public class Coordenador {
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         String timestamp = sdf.format(new Date());
 
-        if (tipo_mensagem.equals("1")) {
-            System.out.println("[" + timestamp + "] REQUEST recebido da thread " + thread);
-        } else if (tipo_mensagem.equals("2")) {
-            System.out.println("[" + timestamp + "] GRANT enviado para thread " + thread);
-        } else if (tipo_mensagem.equals("3")) {
-            System.out.println("[" + timestamp + "] RELEASE recebido da thread " + thread);
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("coordenador_log.txt", true))) {
+            if (tipo_mensagem.equals("1")) {  
+                writer.write("[" + timestamp + "] REQUEST recebido da thread " + thread + "\n");
+            } else if (tipo_mensagem.equals("2")) {
+                writer.write("[" + timestamp + "] GRANT enviado para thread " + thread + "\n");
+            } else if (tipo_mensagem.equals("3")) {
+                writer.write("[" + timestamp + "] RELEASE recebido da thread " + thread + "\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
     
@@ -162,4 +171,6 @@ public class Coordenador {
         new Coordenador(12345).iniciar();
     }
 }
+
+
 
